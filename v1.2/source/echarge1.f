@@ -49,6 +49,7 @@ c
       use virial
       use mpi
       use sizes
+      use cavity
       implicit none
       integer ii,i,iglob,iichg,ierr
       real*8 e,de,term,qtemp
@@ -170,8 +171,17 @@ c
           timereal = timereal + time1 - time0
         end if
       end if
+c
+c     compute contribution due to the interaction with a cavity
+c      
+      if (use_cavity) then
+        call ec_cavity
+      endif
+
+
       return
       end
+
 cc
 cc     subroutine elambdacharge1c : charge electrostatic interactions during lambda dynamics
 cc
@@ -1045,4 +1055,91 @@ c      end do
       time1 = mpi_wtime()
       timegrid2 = timegrid2 + time1-time0
       return
+      end
+
+
+      subroutine ec_cavity
+      use cavity
+      use atmlst
+      use atoms        
+      use bound
+      use boxes
+      use charge
+      use chgpot
+      use couple
+      use cutoff
+      use deriv
+      use domdec
+      use energi
+      use ewald
+      use group
+      use inter
+      use iounit
+      use math
+      use mutant
+      use molcul
+      use neigh
+      use potent
+      use shunt
+      use timestat
+      use usage
+      use virial
+      use mpi
+      implicit none
+ 
+      real*8, allocatable :: mu_x, mu_y
+      integer :: i,iichg,ii,iglob,ierr
+      real*8 :: epsilon_0, k_cav, mu_cav_x, mu_cav_y
+      real*8 :: d_cav_x, d_cav_y
+      
+      ! Define variables hard code version
+      !epsilon_0=8.8541878128*10.**(-12) !F⋅m−1
+      epsilon_0=55.26349406*10.**(-4)*0.043363442   !e2⋅kcal−1mol⋅Ang−1
+      cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass))
+
+      mu_x =0.0d0
+      mu_y =0.0d0
+      
+      do ii = 1,nionloc
+         iichg = chgglob(ii)
+         iglob = iion(iichg)
+         mu_x= mu_x +pchg(iichg)*x(iglob)
+         mu_y= mu_y +pchg(iichg)*y(iglob)
+      enddo
+
+      
+      call MPI_ALLREDUCE(MPI_IN_PLACE,mu_x,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+      call MPI_ALLREDUCE(MPI_IN_PLACE,mu_y,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+
+      k_cav = cav_mass*cav_freq**2   
+      mu_cav_x = cav_x+cav_alpha*mu_x
+      mu_cav_y = cav_y+cav_alpha*mu_y
+      cav_E = 0.5*k_cav*(mu_cav_x**2 + mu_cav_y**2) 
+      
+      if (rank == 0) then
+        ec = ec + cav_E
+      endif
+      
+
+      cav_Fx = -k_cav*mu_cav_x       
+      cav_Fy = -k_cav*mu_cav_y       
+
+      d_cav_x = k_cav*cav_alpha*mu_cav_x
+      d_cav_y = k_cav*cav_alpha*mu_cav_y
+      do ii=1,nionloc
+         iichg = chgglob(ii)
+         iglob = iion(iichg)
+         i = loc(iglob)
+         dec(1,i) = dec(1,i) + pchg(iichg)*d_cav_x
+         dec(2,i) = dec(2,i) + pchg(iichg)*d_cav_y
+      enddo
+
+!   open(13,file='positionXY_cavity.out')             
+!         write(13,'(4e16.8)') 
+!      close(13)   
+
+!       write (iout,*)  ' Cavity position in X and Y'
+!       write (iout,*)  cav_x , cav_y
       end

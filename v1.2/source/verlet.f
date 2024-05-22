@@ -26,6 +26,7 @@ c
       use usage
       use mpi
       use spectra
+      use cavity
       implicit none
       integer i,j,istep
       integer iglob
@@ -61,6 +62,15 @@ c
             z(iglob) = z(iglob) + v(3,iglob)*dt
          end if
       end do
+
+      if (use_cavity) then
+        cav_vx=cav_vx+dt_2*cav_Fx/cav_mass
+        cav_vy=cav_vy+dt_2*cav_Fy/cav_mass
+        cav_x= cav_x+dt*cav_vx
+        cav_y= cav_y+dt*cav_vy
+      endif
+
+
 c
 c     get constraint-corrected positions and half-step velocities
 c
@@ -157,6 +167,11 @@ c
             end do
          end if
       end do
+
+      if (use_cavity) then
+        cav_vx = cav_vx + cav_fx/cav_mass*dt_2
+        cav_vy = cav_vy + cav_fy/cav_mass*dt_2
+      endif
 c
 c     find the constraint-corrected full-step velocities
 c

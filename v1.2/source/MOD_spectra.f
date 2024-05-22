@@ -571,7 +571,14 @@ c
           write(13,'(4e16.8)') domega*(k-1)*cm1
      &       ,Cmumu_sum(k), Cmumu_dec(k), Cmumu_rec(k)
       enddo   
-      close(13)     
+      close(13)    
+
+      open(14,file='IR_spectra_XYZ.out')
+      do k=1,nad
+          write(14,'(4e16.8)') domega*(k-1)*cm1
+     &       ,Cmumu(k,1),Cmumu(k,2),Cmumu(k,3)
+      enddo   
+      close(14)                                        
 
       mudot(:,:)=0.d0
 

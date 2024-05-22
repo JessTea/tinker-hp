@@ -44,6 +44,7 @@ c
       use usage
       use virial
       use replicas
+      use cavity
 #ifdef PLUMED
       use plumed
       use mpi
@@ -120,6 +121,9 @@ c      volscale = 'MOLECULAR'
       gammapiston = 20.0d0
       masspiston=100000.d0 
       virsave = 0d0
+
+      use_cavity = .FALSE.
+      cav_freq = 3500./cm1
 
       ! spectra parameters
       omegacut = 15000.d0/cm1 !0.45*pi/dt   
@@ -230,6 +234,10 @@ c
           endif
         case ('KIN_PRES_AVG')
           kin_instant=.false.
+        case ('CAV_FREQ')
+          read (string,*,iostat=ios) cav_freq
+          cav_freq = cav_freq/cm1
+          use_cavity = .TRUE.
         case ('STARTSAVESPEC')
           read (string,*,iostat=ios) startsavespec
         case ('IR_SPECTRA')
@@ -321,6 +329,24 @@ c
         if (ranktot.eq.0) write(iout,*)'enforcing the use of Monte ',
      $    'Carlo Barostat with TCG'
       end if
+
+      if (use_cavity) then
+        if(integrate /= "VERLET") then
+          if (rank.eq.0) then
+            write(iout,*) 'Cavity MD only compatible with',
+     $    'VERLET integrator for now.'
+          end if
+          call MPI_BARRIER(COMM_TINKER,ierr)
+          call fatal
+        endif
+        cav_x = 0.d0
+        cav_y = 0.d0
+        cav_vx = 0.d0
+        cav_vy = 0.d0
+        cav_Fx = 0.d0
+        cav_Fy = 0.d0
+      endif
+
 c
 c     default time steps for respa and respa1 integrators
 c

@@ -32,6 +32,7 @@ c
       use timestat
       use units
       use mpi
+      use cavity
       implicit none
       integer istep,modstep
       real*8 dt,temp,pres
@@ -73,6 +74,8 @@ c
       save dens_sum,dens2_sum
       save vol_sum,vol2_sum
       save tpiston_sum,tpiston2_sum
+
+      logical exist
 c
 c
 c     set number of steps for block averages of properties
@@ -130,6 +133,24 @@ c
           endif
           write(iout,*)
         end if
+
+c
+c       print in file cavity positions
+c
+      if ( use_cavity .and. modstep .eq. 1) then
+
+          inquire(file="positionXY_cavity.out", exist=exist)
+          if (exist) then
+             open(12, file="positionXY_cavity.out", status="old", 
+     &                       position="append", action="write")
+          else
+             open(12, file="positionXY_cavity.out", status="new",
+     &                                        action="write")
+          end if
+        write(12,'(2e16.8)') cav_x, cav_y 
+        close(12)
+      endif
+
 c
 c       print header for the averages over a group of recent steps
 c
