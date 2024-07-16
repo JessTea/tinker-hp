@@ -124,6 +124,8 @@ c      volscale = 'MOLECULAR'
 
       use_cavity = .FALSE.
       cav_freq = 3500./cm1
+      include_multipoles = .FALSE.   
+      include_multipoles_induced = .FALSE. 
 
       ! spectra parameters
       omegacut = 15000.d0/cm1 !0.45*pi/dt   
@@ -238,6 +240,20 @@ c
           read (string,*,iostat=ios) cav_freq
           cav_freq = cav_freq/cm1
           use_cavity = .TRUE.
+          write(*,*) 'Energy and forces due to the cavity',
+     &           ' include charges'    
+          if (isobaric) then
+            write(*,*) 'WARNING - cavity not compatible',
+     &        ' with NPT ensemble.'
+          endif
+        case ('CAV_MTP')
+            include_multipoles = .TRUE.   
+          write(*,*) 'Energy and forces due to the cavity',
+     &           ' also include multipoles' 
+        case ('CAV_MTP_IND')  
+            include_multipoles_induced = .TRUE. 
+          write(*,*) 'Energy and forces due to the cavity',
+     &           ' also include multipoles and induced dipoles'    
         case ('STARTSAVESPEC')
           read (string,*,iostat=ios) startsavespec
         case ('IR_SPECTRA')

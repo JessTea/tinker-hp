@@ -1089,12 +1089,12 @@ c      end do
  
       real*8, allocatable :: mu_x, mu_y
       integer :: i,iichg,ii,iglob,ierr
-      real*8 :: epsilon_0, k_cav, mu_cav_x, mu_cav_y
+      real*8 ::  epsilon_0, k_cav, mu_cav_x, mu_cav_y
       real*8 :: d_cav_x, d_cav_y
       
       ! Define variables hard code version
       !epsilon_0=8.8541878128*10.**(-12) !F⋅m−1
-      epsilon_0=55.26349406*10.**(-4)*0.043363442   !e2⋅kcal−1mol⋅Ang−1
+      epsilon_0=55.26349406*10.**(-4)*0.043363442   !e2⋅kcal−1mol⋅Ang−1, the vacuum permittivity 
       cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass))
 
       mu_x =0.0d0
@@ -1136,10 +1136,4 @@ c      end do
          dec(2,i) = dec(2,i) + pchg(iichg)*d_cav_y
       enddo
 
-!   open(13,file='positionXY_cavity.out')             
-!         write(13,'(4e16.8)') 
-!      close(13)   
-
-!       write (iout,*)  ' Cavity position in X and Y'
-!       write (iout,*)  cav_x , cav_y
       end

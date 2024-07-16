@@ -68,6 +68,13 @@ c
         cav_vy=cav_vy+dt_2*cav_Fy/cav_mass
         cav_x= cav_x+dt*cav_vx
         cav_y= cav_y+dt*cav_vy
+        ! BOABAB scheame to add thermostat on photons
+        !cav_x= cav_x+dt_2*cav_vx
+        !cav_y= cav_y+dt_2*cav_vy
+        !cav_vx=cav_vx*exp(-gamma_cav*dt) + sigma*normal
+        !cav_vy=cav_vy*exp(-gamma_cav*dt) + sigma*normal
+        !cav_x= cav_x+dt_2*cav_vx
+        !cav_y= cav_y+dt_2*cav_vy
       endif
 
 

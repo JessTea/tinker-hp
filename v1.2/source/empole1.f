@@ -408,6 +408,7 @@ c
       use timestat
       use virial
       use mpi
+      use cavity
       implicit none
       integer i,ii
       integer iipole,iglob,iloc,ierr
@@ -700,6 +701,15 @@ c
           end if
         end if
       end if
+
+c
+c     compute contribution due to the interaction with a cavity
+c      
+      if (use_cavity) then
+        call empole_cavity
+      endif
+
+
       return
       end
 c
@@ -1884,4 +1894,214 @@ c
       deallocate (decfy)
       deallocate (decfz)
       return
+      end
+
+      subroutine empole_cavity
+      
+      use cavity
+      use atmlst
+      use atoms        
+      use bound
+      use boxes
+      use mpole
+      use chgpot
+      use couple
+      use cutoff
+      use deriv
+      use domdec
+      use energi
+      use ewald
+      use group
+      use inter
+      use iounit
+      use math
+      use mutant
+      use molcul
+      use neigh
+      use potent
+      use shunt
+      use timestat
+      use usage
+      use virial
+      use mpi
+      implicit none
+ 
+      real*8  :: mu_x, mu_y
+      integer :: i,iipole,ii,iglob,ierr
+      integer :: iz,ix,iy
+      integer :: l1, l2, l3
+      real*8 :: epsilon_0, k_cav, mu_cav_x, mu_cav_y
+      real*8 :: d_cav_x, d_cav_y, ci, d_cav(2)
+      real*8, dimension(3,3,3) :: dri, drix, driy, driz
+      real*8, dimension(3,3) ::  rmat,di
+      
+      ! Define variables hard code version
+      !epsilon_0=8.8541878128*10.**(-12) !F⋅m−1
+      epsilon_0=55.26349406*10.**(-4)*0.043363442   !e2⋅kcal−1mol⋅Ang−1, the vacuum permittivity
+      cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass))
+
+      mu_x =0.0d0
+      mu_y =0.0d0
+
+      if (include_multipoles) then
+      ! include charges and multipoles to cavity energy
+
+         do ii = 1, npoleloc
+            iipole = poleglob(ii)
+            iglob  = ipole(iipole)
+            ci = rpole(1,iipole)  
+            mu_x= mu_x +ci*x(iglob) +rpole(2,iipole)
+            mu_y= mu_y +ci*y(iglob) +rpole(3,iipole)
+         enddo
+
+         
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_x,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_y,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+
+         k_cav = cav_mass*cav_freq**2   
+         mu_cav_x = cav_x+cav_alpha*mu_x
+         mu_cav_y = cav_y+cav_alpha*mu_y
+         cav_E = 0.5*k_cav*(mu_cav_x**2 + mu_cav_y**2) 
+         
+         if (rank == 0) then
+         em = em + cav_E
+         endif
+
+         ! get derivatives of multipoles
+         cav_Fx = -k_cav*mu_cav_x       
+         cav_Fy = -k_cav*mu_cav_y       
+
+         d_cav(1) = k_cav*cav_alpha*mu_cav_x
+         d_cav(2) = k_cav*cav_alpha*mu_cav_y
+         do ii = 1, npoleloc
+            iipole = poleglob(ii)
+            iglob  = ipole(iipole)
+            i = loc(iglob)
+            ci = rpole(1,iipole) 
+            
+            call derrot(iipole,.true.,iglob,iz,ix,iy,rmat,dri,
+     $   driz,drix,driy)
+          ! gives derivatives of the rotation matrix with respect to the 
+            !position of atoms used to define the local frame: dri,driz,drix,driy
+
+           ! d R / d x_i  * rpole(,ii) from  subroutine torque_prods
+           !   d(3) : dipole (unrot) = pole(3,ii)
+           !   di (3,3)  : derrotated d = d R / d x_i  * pole(,ii) =d mu / d x_i  
+            iz = zaxis(iipole)
+            ix = xaxis(iipole)
+            iy = yaxis(iipole)
+         
+            call aclear(9,di)
+            do l1 = 1,3
+              do l2 = 1,3
+                 do l3 = 1,3
+                  di(l3,l1) = di(l3,l1)
+     $            + dri(l3,l1,l2)*pole(1+l2, iipole)
+                 end do
+               end do  
+            end do  
+
+            dem(1,i) = dem(1,i) + ci*d_cav(1)
+            dem(2,i) = dem(2,i) + ci*d_cav(2)
+            do l3=1,3; do l1=1,2
+               dem(l3,i) = dem(l3,i) + di(l3,l1)*d_cav(l1)
+            enddo; enddo
+
+            if (ix>0) then
+               call aclear(9,di)
+               do l1 = 1,3
+                 do l2 = 1,3
+                    do l3 = 1,3
+                     di(l3,l1) = di(l3,l1)
+     $               + drix(l3,l1,l2)*pole(1+l2, iipole)
+                    end do
+                  end do  
+               end do  
+               i = loc(ix)
+               do l3=1,3; do l1=1,2
+                  dem(l3,i) = dem(l3,i) + di(l3,l1)*d_cav(l1)
+               enddo; enddo
+            endif
+            if (iy>0) then
+               call aclear(9,di)
+               do l1 = 1,3
+                 do l2 = 1,3
+                    do l3 = 1,3
+                     di(l3,l1) = di(l3,l1)
+     $               + driy(l3,l1,l2)*pole(1+l2, iipole)
+                    end do
+                  end do  
+               end do  
+               i = loc(iy)
+               do l3=1,3; do l1=1,2
+                  dem(l3,i) = dem(l3,i) + di(l3,l1)*d_cav(l1)
+               enddo; enddo
+            endif
+            if (iz>0) then
+               call aclear(9,di)
+               do l1 = 1,3
+                 do l2 = 1,3
+                    do l3 = 1,3
+                     di(l3,l1) = di(l3,l1)
+     $               + driz(l3,l1,l2)*pole(1+l2, iipole)
+                    end do
+                  end do  
+               end do  
+               i = loc(iz)
+               do l3=1,3; do l1=1,2
+                  dem(l3,i) = dem(l3,i) + di(l3,l1)*d_cav(l1)
+               enddo; enddo
+            endif
+         enddo
+
+      !elseif include_multipoles_induced then
+      ! include charges, multipoles and induced dipole to cavity energy
+      ! equations for multipoles and induced dipole (To Do)
+
+
+      else
+      ! only charges to cavity energy
+      
+         do ii = 1, npoleloc
+            iipole = poleglob(ii)
+            iglob  = ipole(iipole)
+            ci = rpole(1,iipole)  
+            mu_x= mu_x +ci*x(iglob)
+            mu_y= mu_y +ci*y(iglob)
+         enddo
+
+         
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_x,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_y,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+
+         k_cav = cav_mass*cav_freq**2   
+         mu_cav_x = cav_x+cav_alpha*mu_x
+         mu_cav_y = cav_y+cav_alpha*mu_y
+         cav_E = 0.5*k_cav*(mu_cav_x**2 + mu_cav_y**2) 
+         
+         if (rank == 0) then
+         em = em + cav_E
+         endif
+         
+
+         cav_Fx = -k_cav*mu_cav_x       
+         cav_Fy = -k_cav*mu_cav_y       
+
+         d_cav_x = k_cav*cav_alpha*mu_cav_x
+         d_cav_y = k_cav*cav_alpha*mu_cav_y
+         do ii = 1, npoleloc
+            iipole = poleglob(ii)
+            iglob  = ipole(iipole)
+            i = loc(iglob)
+            ci = rpole(1,iipole)  
+            dem(1,i) = dem(1,i) + ci*d_cav_x
+            dem(2,i) = dem(2,i) + ci*d_cav_y
+         enddo
+
+      endif ! if include multipoles and induced dipole
+
       end
