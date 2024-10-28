@@ -216,31 +216,20 @@ c
          mu_x= 0.5*(mu_xp+mu_xd)
          mu_y= 0.5*(mu_yp+mu_yd)
 
-         !print*, "Is mu_cav_x well defined in polar1?"
-         !print*, mu_cav_x, mu_cav_y
-
-         !print*, "mu_xp=", mu_xp, mu_xd, mu_yd, mu_yp 
-
          k_cav = cav_mass*cav_freq**2  
          cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass)) 
 
          cav_E = 0.5*k_cav*cav_alpha**2*(mu_xp*mu_xd + mu_yd*mu_yp) +
      $          k_cav*cav_alpha*(mu_cav_x*mu_x + mu_cav_y*mu_y)
 
-         !print*, "cav_E in epolar", cav_E
-         !print*, 0.5*k_cav*cav_alpha*(mu_cav_x*mu_x +mu_cav_y*mu_y)
 
          if (rank == 0) then
          ep = ep + cav_E
          endif
-          
-         ! print*, "cav_Fx cav_Fy in epolar before "
-         ! print*, cav_Fx ,cav_Fy 
+
          ! get derivatives of multipoles
          cav_Fx =  cav_Fx - k_cav*cav_alpha*mu_x       
          cav_Fy =  cav_Fy - k_cav*cav_alpha*mu_y  
-
-         !print*, "cav_Fx cav_Fy in epolar", cav_Fx ,cav_Fy 
 
 
          d_cav(1) = k_cav*cav_alpha**2*mu_x
