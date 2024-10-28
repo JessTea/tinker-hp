@@ -53,6 +53,7 @@ c
       subroutine epolar1c
       use atmlst
       use atoms
+      use cavity
       use boxes
       use chgpot
       use deriv
@@ -84,6 +85,13 @@ c
       real*8 zufield
       real*8 fix(3),fiy(3),fiz(3)
       real*8 trq(3)
+      real*8  :: mu_x, mu_y, mu_xp,mu_yp, mu_yd,mu_xd
+      integer :: iz,ix,iy
+      integer :: l1, l2, l3
+      real*8 ::  k_cav
+      real*8 :: d_cav_x, d_cav_y, ci, d_cav(2)
+      real*8, dimension(3,3,3) :: dri, drix, driy, driz
+      real*8, dimension(3,3) ::  rmat,di
 c
 c
 c     zero out the polarization energy and derivatives
@@ -177,12 +185,165 @@ c
           call epreal1c
         end if
 
+        if (use_cavity .and. include_multipoles_induced) then 
+         mu_xp = 0.0d0
+         mu_xd = 0.0d0
+         mu_yp = 0.0d0
+         mu_yd = 0.0d0
+
+
+         do ii = 1, npoleloc
+            iipole = poleglob(ii)
+            iglob  = ipole(iipole)
+            !mu_x= mu_x + 0.5 * (uind(1,iipole) + uinp(1,iipole))
+            !mu_y= mu_y + 0.5 * (uind(2,iipole) + uinp(2,iipole))
+            mu_xp = mu_xp + uinp(1,iipole)
+            mu_yp = mu_yp + uinp(2,iipole)
+            mu_xd = mu_xd + uind(1,iipole)
+            mu_yd = mu_yd + uind(2,iipole)
+         enddo
+        
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_xp,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_yp,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_xd,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_yd,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+
+
+         mu_x= 0.5*(mu_xp+mu_xd)
+         mu_y= 0.5*(mu_yp+mu_yd)
+
+         !print*, "Is mu_cav_x well defined in polar1?"
+         !print*, mu_cav_x, mu_cav_y
+
+         !print*, "mu_xp=", mu_xp, mu_xd, mu_yd, mu_yp 
+
+         k_cav = cav_mass*cav_freq**2  
+         cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass)) 
+
+         cav_E = 0.5*k_cav*cav_alpha**2*(mu_xp*mu_xd + mu_yd*mu_yp) +
+     $          k_cav*cav_alpha*(mu_cav_x*mu_x + mu_cav_y*mu_y)
+
+         !print*, "cav_E in epolar", cav_E
+         !print*, 0.5*k_cav*cav_alpha*(mu_cav_x*mu_x +mu_cav_y*mu_y)
+
+         if (rank == 0) then
+         ep = ep + cav_E
+         endif
+          
+         ! print*, "cav_Fx cav_Fy in epolar before "
+         ! print*, cav_Fx ,cav_Fy 
+         ! get derivatives of multipoles
+         cav_Fx =  cav_Fx - k_cav*cav_alpha*mu_x       
+         cav_Fy =  cav_Fy - k_cav*cav_alpha*mu_y  
+
+         !print*, "cav_Fx cav_Fy in epolar", cav_Fx ,cav_Fy 
+
+
+         d_cav(1) = k_cav*cav_alpha**2*mu_x
+         d_cav(2) = k_cav*cav_alpha**2*mu_y
+         do ii = 1, npoleloc
+            iipole = poleglob(ii)
+            iglob  = ipole(iipole)
+            i = loc(iglob)
+            ci = rpole(1,iipole) 
+            
+            call derrot(iipole,.true.,iglob,iz,ix,iy,rmat,dri,
+     $   driz,drix,driy)
+          ! gives derivatives of the rotation matrix with respect to the 
+            !position of atoms used to define the local frame: dri,driz,drix,driy
+
+           ! d R / d x_i  * rpole(,ii) from  subroutine torque_prods
+           !   d(3) : dipole (unrot) = pole(3,ii)
+           !   di (3,3)  : derrotated d = d R / d x_i  * pole(,ii) =d mu / d x_i  
+            iz = zaxis(iipole)
+            ix = xaxis(iipole)
+            iy = yaxis(iipole)
+         
+            !call aclear(9,di)
+            di = 0.d0
+            do l1 = 1,3
+              do l2 = 1,3
+                 do l3 = 1,3
+                  di(l3,l1) = di(l3,l1)
+     $            + dri(l3,l1,l2)*pole(1+l2, iipole)
+                 end do
+               end do  
+            end do  
+
+            dep(1,i) = dep(1,i) + ci*d_cav(1)
+            dep(2,i) = dep(2,i) + ci*d_cav(2)
+            do l3=1,3; do l1=1,2
+               dep(l3,i) = dep(l3,i) + di(l3,l1)*d_cav(l1)
+            enddo; enddo
+
+            if (ix>0) then
+               !call aclear(9,di)
+               di = 0.d0
+               do l1 = 1,3
+                 do l2 = 1,3
+                    do l3 = 1,3
+                     di(l3,l1) = di(l3,l1)
+     $               + drix(l3,l1,l2)*pole(1+l2, iipole)
+                    end do
+                  end do  
+               end do  
+               i = loc(ix)
+               do l3=1,3; do l1=1,2
+                  dep(l3,i) = dep(l3,i) + di(l3,l1)*d_cav(l1)
+               enddo; enddo
+            endif
+            if (iy>0) then
+               !call aclear(9,di)
+               di = 0.d0
+               do l1 = 1,3
+                 do l2 = 1,3
+                    do l3 = 1,3
+                     di(l3,l1) = di(l3,l1)
+     $               + driy(l3,l1,l2)*pole(1+l2, iipole)
+                    end do
+                  end do  
+               end do  
+               i = loc(iy)
+               do l3=1,3; do l1=1,2
+                  dep(l3,i) = dep(l3,i) + di(l3,l1)*d_cav(l1)
+               enddo; enddo
+            endif
+            if (iz>0) then
+               !call aclear(9,di)
+               di = 0.d0
+               do l1 = 1,3
+                 do l2 = 1,3
+                    do l3 = 1,3
+                     di(l3,l1) = di(l3,l1)
+     $               + driz(l3,l1,l2)*pole(1+l2, iipole)
+                    end do
+                  end do  
+               end do  
+               i = loc(iz)
+               do l3=1,3; do l1=1,2
+                  dep(l3,i) = dep(l3,i) + di(l3,l1)*d_cav(l1)
+               enddo; enddo
+            endif
+         enddo
+
+        endif
+
         if (use_pself) then
 c
 c     compute the Ewald self-energy term over all the atoms
 c
           term = 2.0d0 * aewald * aewald
           fterm = -f * aewald / sqrtpi
+          xu = 0.0d0
+          yu = 0.0d0
+          zu = 0.0d0
+          xup = 0.0d0
+          yup = 0.0d0
+          zup = 0.0d0
           do ii = 1, npoleloc
              iipole = poleglob(ii)
              dix = rpole(2,iipole)
@@ -194,7 +355,27 @@ c
              uii = dix*uix + diy*uiy + diz*uiz
              e = fterm * term * uii / 3.0d0
              ep = ep + e
+             xu = xu + uind(1,iipole)
+             yu = yu + uind(2,iipole)
+             zu = zu + uind(3,iipole)
+             xup = xup + uinp(1,iipole)
+             yup = yup + uinp(2,iipole)
+             zup = zup + uinp(3,iipole)
           end do
+          !print*, "uinp in epolar",xup, yup, zup
+          !print*, "unid",xu, yu, zu
+          
+!          open(100, file = 'uind.dat', status = 'old') 
+!          write(100,*) "Next Step" 
+!          do ii = 1, npoleloc
+!            iipole = poleglob(ii)
+!            iglob  = ipole(iipole)
+!            write(100,*) x(iipole), y(iipole), z(iipole), 
+!     $      uind(1,iipole), uind(2,iipole), uind(3,iipole)
+!          enddo 
+!          close(100)  
+        
+        
 c
 c       compute the self-energy torque term due to induced dipole
 c

@@ -288,6 +288,9 @@ c
 c
       subroutine inducepcg_pme(matvec,nrhs,precnd,ef,mu,murec)
       use atmlst
+      use boxes
+      use cavity
+      use chgpot
       use domdec
       use ewald
       use iounit
@@ -313,7 +316,7 @@ c
      $  diag(:)
       integer i, iglob, it, j, k, iipole
       real*8  ggold(2), ggnew(2), gnorm(2), gg(2), alphacg(2), ene(2)
-      real*8  zero, pt5, one, resnrm
+      real*8  zero, pt5, one, resnrm, k_cav
       save    zero, pt5, one
       external matvec
       real*8, allocatable :: dipfield(:,:,:),dipfieldbis(:,:,:)
@@ -394,6 +397,14 @@ c
             diag(i) = polarity(iipole)
           end if
         end do
+        !if (use_cavity .and. include_multipoles_induced) then
+        !  !epsilon_0=1./(4*acos(-1.)*electric/dielec)
+        !  cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass))
+        !  k_cav = cav_mass*(cav_freq*cav_alpha)**2
+        !  do i = 1, npoleloc
+        !    diag(i) = 1./(1./diag(i) + k_cav)
+        !  end do
+        !endif
         if (polprt.ge.2.and.rank.eq.0) write (iout,1040)
       else
         diag = 1d0
@@ -669,6 +680,8 @@ c
       subroutine inducejac_pme(matvec,nrhs,dodiis,ef,mu,murec)
       use atmlst
       use domdec
+      use cavity
+      use boxes
       use ewald
       use iounit
       use math
@@ -693,7 +706,7 @@ c
       parameter (ndismx=25)
       integer ipiv(ndismx+1)
       real*8  zero, one, rnorm(2), rr, xx(1)
-      real*8 term
+      real*8 term, k_cav
       save    zero, one, xx
       external matvec
       real*8, allocatable :: dipfield(:,:,:),dipfieldbis(:,:,:)
@@ -812,6 +825,20 @@ c
            end do
          end do
 c
+         if (use_cavity .and. include_multipoles_induced) then
+          cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass))
+          k_cav = cav_mass*(cav_freq*cav_alpha)**2
+          do i = 1, npoleloc
+            iipole = poleglob(i)
+            do k = 1, nrhs
+                munew(1,k,i) = (1./(1./polarity(iipole) + k_cav))*
+     $           (ef(1,k,i) - h(1,k,i))
+                munew(2,k,i) = (1./(1./polarity(iipole) + k_cav))*
+     $           (ef(2,k,i) - h(2,k,i))
+                munew(3,k,i) = polarity(iipole)*(ef(3,k,i) - h(3,k,i))
+            end do
+          end do
+        else
           do i = 1, npoleloc
             iipole = poleglob(i)
             do k = 1, nrhs
@@ -820,6 +847,7 @@ c
               end do
             end do
           end do
+         endif
 c
           do i = 1, npoleloc
             do k = 1, nrhs
@@ -1383,7 +1411,10 @@ c
       use atmlst
       use atoms
       use bound
+      use boxes
+      use cavity
       use chgpen
+      use chgpot
       use couple
       use domdec
       use ewald
@@ -1405,6 +1436,7 @@ c
       real*8 rr3,rr5
       real*8 rr3ik,rr5ik
       real*8 scalek
+      real*8 mu_x,mu_y, k_cav,f
       real*8 dmp3,dmp5
       real*8 fid(3),fkd(3)
       real*8 fip(3),fkp(3)
@@ -1420,7 +1452,7 @@ c
       real*8, allocatable :: wscale(:)
       logical dodiag
       logical shortrange
-      integer j, ii, kkk, irhs
+      integer j, ii, kkk, irhs, ierr
       real*8  cutoff2
       character*11 mode
       character*80 :: RoutineName
@@ -1640,6 +1672,42 @@ c
           end do
         end do
       end if
+
+      if (use_cavity .and. include_multipoles_induced) then
+
+        f = electric/dielec
+        do irhs = 1, nrhs
+        mu_x=0.0d0
+        mu_y=0.0d0
+          do i = 1, npoleloc
+              mu_x = mu_x + mu(1,irhs,i)
+              mu_y = mu_y + mu(2,irhs,i)
+          enddo
+
+          call MPI_ALLREDUCE(MPI_IN_PLACE,mu_x,1,MPI_REAL8,MPI_SUM,
+     $          COMM_TINKER,ierr)
+          call MPI_ALLREDUCE(MPI_IN_PLACE,mu_y,1,MPI_REAL8,MPI_SUM,
+     $          COMM_TINKER,ierr)
+
+         ! epsilon_0=1./(4*acos(-1.)*electric/dielec)
+          cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass))
+          k_cav = cav_mass*(cav_freq*cav_alpha)**2/f
+          mu_x= mu_x * k_cav
+          mu_y= mu_y * k_cav
+
+          do i = 1, npoleloc
+                efi(1,irhs,i) = efi(1,irhs,i) + mu_x         
+                efi(2,irhs,i) = efi(2,irhs,i) + mu_y         
+          end do
+          if (.not. dodiag) then
+            do i = 1, npoleloc
+                efi(1,irhs,i) = efi(1,irhs,i) - k_cav* mu(1,irhs,i)        
+                efi(2,irhs,i) = efi(2,irhs,i) - k_cav* mu(2,irhs,i)        
+            end do
+          endif
+        end do
+
+      endif
 c
 c     perform deallocation of some local arrays
 c

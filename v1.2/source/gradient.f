@@ -187,7 +187,7 @@ c
 
 c
       derivs(:,1:nbloc) = derivs(:,1:nbloc) + desum(:,1:nbloc)
-c
+c    
 c     check for an illegal value for the total energy
 c
       if (isnan(esum)) then

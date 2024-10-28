@@ -710,7 +710,6 @@ c
       endif
 
 
-      return
       end
 c
 c
@@ -1930,19 +1929,15 @@ c
       integer :: i,iipole,ii,iglob,ierr
       integer :: iz,ix,iy
       integer :: l1, l2, l3
-      real*8 :: epsilon_0, k_cav, mu_cav_x, mu_cav_y
+      real*8 ::  k_cav  
       real*8 :: d_cav_x, d_cav_y, ci, d_cav(2)
       real*8, dimension(3,3,3) :: dri, drix, driy, driz
       real*8, dimension(3,3) ::  rmat,di
       
-      ! Define variables hard code version
-      !epsilon_0=8.8541878128*10.**(-12) !F⋅m−1
-      epsilon_0=55.26349406*10.**(-4)*0.043363442   !e2⋅kcal−1mol⋅Ang−1, the vacuum permittivity
       cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass))
-
       mu_x =0.0d0
       mu_y =0.0d0
-
+   
       if (include_multipoles) then
       ! include charges and multipoles to cavity energy
 
@@ -1954,7 +1949,6 @@ c
             mu_y= mu_y +ci*y(iglob) +rpole(3,iipole)
          enddo
 
-         
          call MPI_ALLREDUCE(MPI_IN_PLACE,mu_x,1,MPI_REAL8,MPI_SUM,
      $        COMM_TINKER,ierr)
          call MPI_ALLREDUCE(MPI_IN_PLACE,mu_y,1,MPI_REAL8,MPI_SUM,
@@ -1970,8 +1964,10 @@ c
          endif
 
          ! get derivatives of multipoles
-         cav_Fx = -k_cav*mu_cav_x       
-         cav_Fy = -k_cav*mu_cav_y       
+         
+         cav_Fx =  -k_cav*mu_cav_x       
+         cav_Fy =  -k_cav*mu_cav_y 
+
 
          d_cav(1) = k_cav*cav_alpha*mu_cav_x
          d_cav(2) = k_cav*cav_alpha*mu_cav_y
@@ -2056,9 +2052,6 @@ c
             endif
          enddo
 
-      !elseif include_multipoles_induced then
-      ! include charges, multipoles and induced dipole to cavity energy
-      ! equations for multipoles and induced dipole (To Do)
 
 
       else
@@ -2089,7 +2082,7 @@ c
          
 
          cav_Fx = -k_cav*mu_cav_x       
-         cav_Fy = -k_cav*mu_cav_y       
+         cav_Fy = -k_cav*mu_cav_y      
 
          d_cav_x = k_cav*cav_alpha*mu_cav_x
          d_cav_y = k_cav*cav_alpha*mu_cav_y

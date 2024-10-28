@@ -130,6 +130,7 @@ c
       use sizes
       use atmlst
       use atoms
+      use cavity
       use boxes
       use chgpot
       use domdec
@@ -145,10 +146,12 @@ c
       implicit none
       integer ii,iglob,iipole,ierr
       real*8 e,f,term,fterm
-      real*8 dix,diy,diz
+      real*8 dix,diy,diz,ci
       real*8 uix,uiy,uiz,uii
       real*8 xd,yd,zd
       real*8 xu,yu,zu
+      real*8  :: mu_x, mu_y, mu_xp,mu_yp, mu_yd,mu_xd
+      real*8 ::  k_cav
 c
 c
 c     zero out the polarization energy and derivatives
@@ -203,6 +206,53 @@ c
         if (use_preal) then
           call epreal0c
         end if
+
+        if (use_cavity .and. include_multipoles_induced) then 
+         mu_xp = 0.0d0
+         mu_xd = 0.0d0
+         mu_yp = 0.0d0
+         mu_yd = 0.0d0
+
+
+         do ii = 1, npoleloc
+            iipole = poleglob(ii)
+            iglob  = ipole(iipole)
+            !mu_x= mu_x + 0.5 * (uind(1,iipole) + uinp(1,iipole))
+            !mu_y= mu_y + 0.5 * (uind(2,iipole) + uinp(2,iipole))
+            mu_xp = mu_xp + uinp(1,iipole)
+            mu_yp = mu_yp + uinp(2,iipole)
+            mu_xd = mu_xd + uind(1,iipole)
+            mu_yd = mu_yd + uind(2,iipole)
+         enddo
+        
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_xp,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_yp,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_xd,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_yd,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+
+
+         mu_x= 0.5*(mu_xp+mu_xd)
+         mu_y= 0.5*(mu_yp+mu_yd)
+
+         k_cav = cav_mass*cav_freq**2  
+         cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass)) 
+
+         cav_E = !0.5*k_cav*cav_alpha**2*(mu_xp*mu_xd + mu_yd*mu_yp) +
+     $          0.5*k_cav*cav_alpha*(mu_cav_x*mu_x + mu_cav_y*mu_y)
+c        Identical to 
+c         cav_E = 0.5*k_cav*cav_alpha**2*(mu_xp*mu_xd + mu_yd*mu_yp) +
+c     $          k_cav*cav_alpha*(mu_cav_x*mu_x + mu_cav_y*mu_y)
+c        at convergence (minimal induced dipole) 
+c
+
+         if (rank == 0) then
+         ep = ep + cav_E
+         endif
+      endif   
 
         if (use_pself) then
 c

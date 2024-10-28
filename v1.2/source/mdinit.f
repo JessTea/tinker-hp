@@ -21,6 +21,7 @@ c
       use beads, only: path_integral_md
       use bound
       use couple
+      use chgpot
       use cutoff
       use deriv
       use domdec
@@ -126,6 +127,8 @@ c      volscale = 'MOLECULAR'
       cav_freq = 3500./cm1
       include_multipoles = .FALSE.   
       include_multipoles_induced = .FALSE. 
+      cav_x = 0.d0
+      cav_y = 0.d0
 
       ! spectra parameters
       omegacut = 15000.d0/cm1 !0.45*pi/dt   
@@ -247,10 +250,15 @@ c
      &        ' with NPT ensemble.'
           endif
         case ('CAV_MTP')
-            include_multipoles = .TRUE.   
+            include_multipoles = .TRUE.       
           write(*,*) 'Energy and forces due to the cavity',
      &           ' also include multipoles' 
+        case ('EPS_CAV')
+            read (string,*,iostat=ios) eps_cav
+        case ('CAV_POSITIONS')
+            read (string,*,iostat=ios) cav_x, cav_y
         case ('CAV_MTP_IND')  
+            include_multipoles = .TRUE.
             include_multipoles_induced = .TRUE. 
           write(*,*) 'Energy and forces due to the cavity',
      &           ' also include multipoles and induced dipoles'    
@@ -355,12 +363,13 @@ c
           call MPI_BARRIER(COMM_TINKER,ierr)
           call fatal
         endif
-        cav_x = 0.d0
-        cav_y = 0.d0
+!        cav_x = 0.d0   put to 0 previously
+!        cav_y = 0.d0
         cav_vx = 0.d0
         cav_vy = 0.d0
         cav_Fx = 0.d0
         cav_Fy = 0.d0
+        epsilon_0=1./(4*acos(-1.)*electric/dielec)*eps_cav
       endif
 
 c

@@ -15,6 +15,10 @@ c     J. Chem. Theory Comput., 2015, 11 (6), pp 2589–2599
 c
       subroutine newinduce_pme2
       use atmlst
+      use atoms
+      use boxes
+      use cavity
+      use chgpot
       use domdec
       use ewald
       use iounit
@@ -33,7 +37,7 @@ c
 c
 c     without separate cores for reciprocal part
 c
-      integer i, j, k, nrhs
+      integer i, j, k, nrhs,ii,ierr
 c
 c     MPI
 c
@@ -46,7 +50,7 @@ c
 c
       parameter (nrhs=2)
       real*8  wtime0, wtime1, wtime2, udsum, upsum
-      real*8  term
+      real*8  term, k_cav_y, k_cav_x,ci,f
       real*8 plambda,dplambdadelambdae
       real*8, allocatable :: ef(:,:,:), mu(:,:,:), murec(:,:,:)
       real*8, allocatable :: cphi(:,:)
@@ -135,6 +139,26 @@ c
           ef(j,2,i)  = ef(j,2,i) - cphi(j+1,i) 
         end do
       end do
+
+      if (use_cavity .and. include_multipoles_induced) then
+
+
+       cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass)) 
+
+       f=electric/dielec
+       k_cav_x = cav_alpha*cav_mass*cav_freq**2*mu_cav_x/f
+       k_cav_y = cav_alpha*cav_mass*cav_freq**2*mu_cav_y/f 
+
+       do i = 1, npoleloc
+        iipole = poleglob(i)
+          ef(1,1,i)  = ef(1,1,i) - k_cav_x
+          ef(1,2,i)  = ef(1,2,i) - k_cav_x
+          ef(2,1,i)  = ef(2,1,i) - k_cav_y
+          ef(2,2,i)  = ef(2,2,i) - k_cav_y
+       end do
+      endif
+
+
 c
       term = (4.0d0/3.0d0) * aewald**3 / sqrtpi
       do i = 1, npoleloc
@@ -281,6 +305,9 @@ c      deallocate (cphirec)
 c
       subroutine inducepcg_pme2(matvec,nrhs,precnd,ef,mu,murec)
       use atmlst
+      use cavity
+      use boxes
+      use chgpot
       use domdec
       use ewald
       use iounit
@@ -305,7 +332,7 @@ c
      $  diag(:)
       integer i, it, j, k
       real*8  ggold(2), ggnew(2), gnorm(2), gg(2), alphacg(2), ene(2)
-      real*8  zero, pt5, one, resnrm, term
+      real*8  zero, pt5, one, resnrm, term, k_cav
       save    zero, pt5, one
       data    zero/0.0d0/, pt5/0.50d0/, one/1.0d0/
       external matvec
@@ -375,6 +402,14 @@ c
             diag(i) = polarity(iipole)
           end if
         end do
+        !if (use_cavity .and. include_multipoles_induced) then
+          !epsilon_0=1./(4*acos(-1.)*electric/dielec)
+        !  cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass))
+        !  k_cav = cav_mass*(cav_freq*cav_alpha)**2
+        !  do i = 1, npoleloc
+        !    diag(i) = 1./(1./diag(i) + k_cav)
+        !  end do
+        !endif
         if (polprt.ge.2.and.rank.eq.0) write (iout,1040)
       else
         do i = 1, npoleloc
@@ -397,6 +432,7 @@ c
       call tmatxbrecip(mu,murec,nrhs,dipfield,dipfieldbis)
       call matvec(nrhs,.true.,mu,h)
       call commfield(nrhs,h)
+
 c
       call commrecdirsolv(nrhs,0,dipfieldbis,dipfield,buffermpi1,
      $    buffermpi2,reqrecdirrec,reqrecdirsend)
@@ -454,6 +490,9 @@ c
         call tmatxbrecip(pp,murec,nrhs,dipfield,dipfieldbis)
         call matvec(nrhs,.true.,pp,h)
         call commfield(nrhs,h)
+
+        !print*, "h iter=", h(1,1,1), h(1,2,1), h(2,1,1), h(2,2,1),  
+        !$  h(3,1,1), h(3,2,1)
 c
 c     Begin the reception of the reciprocal fields
 c
@@ -631,6 +670,8 @@ c
 c
       subroutine inducejac_pme2(matvec,nrhs,dodiis,ef,mu,murec)
       use atmlst
+      use cavity
+      use boxes
       use domdec
       use ewald
       use iounit
@@ -656,7 +697,7 @@ c
       parameter (ndismx=25)
       integer ipiv(ndismx+1)
       real*8  zero, one, rnorm(2), rr, xx(1)
-      real*8 term
+      real*8 term, k_cav
       save    zero, one, xx
       external matvec
       real*8, allocatable :: dipfield(:,:,:),dipfieldbis(:,:,:)
@@ -755,14 +796,29 @@ c
           end do
         end do
 c
-        do i = 1, npoleloc
-          iipole = poleglob(i)
-          do k = 1, nrhs
-            do j = 1, 3
-              munew(j,k,i) = polarity(iipole)*(ef(j,k,i) - h(j,k,i))
+        if (use_cavity .and. include_multipoles_induced) then
+          cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass))
+          k_cav = cav_mass*(cav_freq*cav_alpha)**2
+          do i = 1, npoleloc
+            iipole = poleglob(i)
+            do k = 1, nrhs
+                munew(1,k,i) = (1./(1./polarity(iipole) + k_cav))*
+     $           (ef(1,k,i) - h(1,k,i))
+                munew(2,k,i) = (1./(1./polarity(iipole) + k_cav))*
+     $           (ef(2,k,i) - h(2,k,i))
+                munew(3,k,i) = polarity(iipole)*(ef(3,k,i) - h(3,k,i))
             end do
           end do
-        end do
+        else
+          do i = 1, npoleloc
+            iipole = poleglob(i)
+            do k = 1, nrhs
+              do j = 1, 3
+                munew(j,k,i) = polarity(iipole)*(ef(j,k,i) - h(j,k,i))
+              end do
+            end do
+          end do
+        endif
 c
         rnorm = 0d0
         do i = 1, npoleloc

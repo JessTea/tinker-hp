@@ -212,6 +212,7 @@ c
       subroutine empole0c
       use sizes
       use atmlst
+      use cavity
       use atoms
       use boxes
       use chgpot
@@ -326,7 +327,14 @@ c
           end if
         end if
       end if
-      return
+
+c
+c     compute contribution due to the interaction with a cavity
+c      
+      if (use_cavity) then
+        call empole0_cavity
+      endif
+
       end
 c
 c
@@ -646,3 +654,102 @@ c
       deallocate (mscale)
       return
       end
+
+         subroutine empole0_cavity
+      
+      use cavity
+      use atmlst
+      use atoms        
+      use bound
+      use boxes
+      use mpole
+      use chgpot
+      use couple
+      use cutoff
+      use deriv
+      use domdec
+      use energi
+      use ewald
+      use group
+      use inter
+      use iounit
+      use math
+      use mutant
+      use molcul
+      use neigh
+      use potent
+      use shunt
+      use timestat
+      use usage
+      use virial
+      use mpi
+      implicit none
+ 
+      real*8  :: mu_x, mu_y
+      integer :: i,iipole,ii,iglob,ierr
+      integer :: iz,ix,iy
+      integer :: l1, l2, l3
+      real*8 ::  k_cav  !, rpole_totx,rpole_toty
+      real*8 :: d_cav_x, d_cav_y, ci, d_cav(2)
+      real*8, dimension(3,3,3) :: dri, drix, driy, driz
+      real*8, dimension(3,3) ::  rmat,di
+      
+
+      cav_alpha=1/(cav_freq*sqrt(volbox*epsilon_0*cav_mass))
+      mu_x =0.0d0
+      mu_y =0.0d0
+
+      if (include_multipoles) then
+      ! include charges and multipoles to cavity energy
+
+         do ii = 1, npoleloc
+            iipole = poleglob(ii)
+            iglob  = ipole(iipole)
+            ci = rpole(1,iipole)  
+            mu_x= mu_x +ci*x(iglob) +rpole(2,iipole)
+            mu_y= mu_y +ci*y(iglob) +rpole(3,iipole)
+         enddo
+         
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_x,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_y,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+
+         k_cav = cav_mass*cav_freq**2   
+         mu_cav_x = cav_x+cav_alpha*mu_x
+         mu_cav_y = cav_y+cav_alpha*mu_y
+         cav_E = 0.5*k_cav*(mu_cav_x**2 + mu_cav_y**2) 
+         
+         if (rank == 0) then
+           em = em + cav_E
+         endif
+
+         else
+      ! only charges to cavity energy
+      
+         do ii = 1, npoleloc
+            iipole = poleglob(ii)
+            iglob  = ipole(iipole)
+            ci = rpole(1,iipole)  
+            mu_x= mu_x +ci*x(iglob)
+            mu_y= mu_y +ci*y(iglob)
+         enddo
+
+         
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_x,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+         call MPI_ALLREDUCE(MPI_IN_PLACE,mu_y,1,MPI_REAL8,MPI_SUM,
+     $        COMM_TINKER,ierr)
+
+         k_cav = cav_mass*cav_freq**2   
+         mu_cav_x = cav_x+cav_alpha*mu_x
+         mu_cav_y = cav_y+cav_alpha*mu_y
+         cav_E = 0.5*k_cav*(mu_cav_x**2 + mu_cav_y**2) 
+         
+         if (rank == 0) then
+         em = em + cav_E
+         endif
+         
+         endif
+
+         end

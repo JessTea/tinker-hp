@@ -137,7 +137,7 @@ c
 c
 c       print in file cavity positions
 c
-      if ( use_cavity .and. modstep .eq. 1) then
+      if ( use_cavity .and. modstep .eq. 0) then
 
           inquire(file="positionXY_cavity.out", exist=exist)
           if (exist) then
