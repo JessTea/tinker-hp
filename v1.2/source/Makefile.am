@@ -180,6 +180,7 @@ libtinkermod_a_SOURCES += MOD_bndpot.f
 libtinkermod_a_SOURCES += MOD_bond.f
 libtinkermod_a_SOURCES += MOD_bound.f
 libtinkermod_a_SOURCES += MOD_boxes.f
+libtinkermod_a_SOURCES += MOD_cavity.f
 libtinkermod_a_SOURCES += MOD_cell.f
 libtinkermod_a_SOURCES += MOD_colvars.f
 libtinkermod_a_SOURCES += MOD_cflux.f

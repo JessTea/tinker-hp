@@ -18,7 +18,6 @@ c
       program testgrad
       use atoms
       use cell
-      use cavity
       use deriv
       use domdec
       use energi
@@ -26,10 +25,8 @@ c
       use inform
       use iounit
       use mpole
-      use units
       use usage
       use mpi
-      use chgpot
       implicit none
       integer i,j,next,iglob,ierr
       integer iloc
@@ -73,18 +70,9 @@ c
       character*240 record
       character*240 string
       data axis  / 'X','Y','Z' /
-
-c       test cavity
-      cav_freq = 3660/cm1
-      use_cavity = .FALSE.
-      include_multipoles = .FALSE.
-      include_multipoles_induced = .FALSE.
-      cav_x = 0.001d0
-      cav_y = 0.0d0
-      cav_vx = 0.d0
-      cav_vy = 0.d0
-      cav_Fx = 0.d0
-      cav_Fy = 0.d0
+c
+      ! Sign running program
+      app_id = testgrad_a
 c
       call MPI_INIT(ierr)
 c
@@ -110,9 +98,6 @@ c
 c
       call nblist(0)
       call allocstep
-
-      epsilon_0= 1./(4*acos(-1.)*electric/dielec)
-
 c
 c     decide whether to do an analytical gradient calculation
 c
